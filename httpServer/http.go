@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"time"
@@ -87,7 +88,11 @@ func formatSize(size int64) string {
 }
 
 func get(c *gin.Context) {
-	ph := path.Join(localdir, c.Request.RequestURI)
+	rquri, err := url.PathUnescape(c.Request.RequestURI)
+	if err != nil {
+		rquri = c.Request.RequestURI
+	}
+	ph := path.Join(localdir, rquri)
 	info, err := os.Stat(ph)
 	if err != nil {
 		c.String(http.StatusOK, "目录不存在")
@@ -153,7 +158,11 @@ func delete(c *gin.Context) {
 	}
 }
 func put(c *gin.Context) {
-	ph := path.Join(localdir, c.Request.RequestURI)
+	rquri, err := url.PathUnescape(c.Request.RequestURI)
+	if err != nil {
+		rquri = c.Request.RequestURI
+	}
+	ph := path.Join(localdir, rquri)
 	fh, err := c.FormFile("file")
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
