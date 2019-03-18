@@ -50,6 +50,9 @@ func Start(port, username, password, dir string) error {
 		case http.MethodDelete:
 			delete(context)
 		}
+		if !context.IsAborted() {
+			context.AbortWithStatus(http.StatusOK)
+		}
 
 	})
 	/*app.Use(author, fileSecurity)
@@ -71,15 +74,15 @@ func formatSize(size int64) string {
 	switch {
 	case size > 1024:
 		//K
-		return fmt.Sprint("%.2fK", float64(size/1024))
+		return fmt.Sprintf("%.2fK", float64(size/1024))
 	case size > 1024*1024:
 		//M
-		return fmt.Sprint("%.2fM", float64(size/1024*1024))
+		return fmt.Sprintf("%.2fM", float64(size/1024*1024))
 	case size > 1024*1024*1024:
-		return fmt.Sprint("%.2fG", float64(size/1024*1024*1024))
+		return fmt.Sprintf("%.2fG", float64(size/1024*1024*1024))
 	//G
 	default:
-		return fmt.Sprint("%dB", size)
+		return fmt.Sprintf("%dB", size)
 	}
 }
 
@@ -101,12 +104,12 @@ func get(c *gin.Context) {
 			<a href="ind">ind</a>                                                29-Nov-2018 10:58       0
 			</pre><hr></body>
 			</html>`
-					*/
+	*/
 	if info.IsDir() {
 		s := fmt.Sprintf(`<html>
 <head><title>Index of /</title></head>
 <body>
-<h1>Index of %s</h1><hr><pre><a href="../">../</a>`, c.Request.RequestURI)
+<h1>Index of %s</h1><hr><pre><a href="../">../</a><br/>`, c.Request.RequestURI)
 		if c.Request.RequestURI == "/" {
 			s = `<html>
 <head><title>Index of /</title></head>
@@ -128,7 +131,7 @@ func get(c *gin.Context) {
 		}
 		s += `</pre><hr></body>
 </html>`
-		c.Data(http.StatusOK,"text/html;charset=utf-8",[]byte(s))
+		c.Data(http.StatusOK, "text/html;charset=utf-8", []byte(s))
 	} else {
 		//返回内容
 		c.File(ph)
@@ -136,7 +139,18 @@ func get(c *gin.Context) {
 
 }
 func delete(c *gin.Context) {
-
+	ph := c.Request.RequestURI
+	ph = path.Join(localdir, ph)
+	fn, err := os.Stat(ph)
+	if err != nil {
+		c.Abort()
+		return
+	}
+	if fn.IsDir() {
+		os.RemoveAll(ph)
+	} else {
+		os.Remove(ph)
+	}
 }
 func put(c *gin.Context) {
 	ph := path.Join(localdir, c.Request.RequestURI)
@@ -165,7 +179,7 @@ func put(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "服务器创传文件失败"})
 			return
 		}
-	}else {
+	} else {
 		defer ff.Close()
 	}
 	if _, err = io.Copy(ff, f); err != nil {
