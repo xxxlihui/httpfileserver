@@ -163,12 +163,6 @@ func put(c *gin.Context) {
 		rquri = c.Request.RequestURI
 	}
 	ph := path.Join(localdir, rquri)
-	fh, err := c.FormFile("file")
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
-		return
-	}
-	f, err := fh.Open()
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
 		return
@@ -191,7 +185,7 @@ func put(c *gin.Context) {
 	} else {
 		defer ff.Close()
 	}
-	if _, err = io.Copy(ff, f); err != nil {
+	if _, err = io.Copy(ff, c.Request.Body); err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "服务器保存文件失败"})
 		return
 	}

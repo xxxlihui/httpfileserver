@@ -18,37 +18,40 @@ func main() {
 		Authors: []*cli.Author{{Name: "lhn", Email: "550124023@qq.com"}},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:"port",
-				Aliases: []string{"p"},
-				Usage:"服务监听的端口",
-				Value:":80",
-				Destination:&port,
+				Name:        "port",
+				Aliases:     []string{"p"},
+				Usage:       "服务监听的端口",
+				Value:       ":80",
+				Destination: &port,
 			},
 			&cli.StringFlag{
-				Name:"username",
-				Aliases: []string{"n","name"},
-				Usage:"用户名称,httpServer base认证",
-				Value:"sa",
-				Destination:&username,
+				Name:        "username",
+				Aliases:     []string{"n", "name"},
+				Usage:       "用户名称,httpServer base认证",
+				Value:       "sa",
+				Destination: &username,
 			},
 			&cli.StringFlag{
-				Name:"password",
-				Aliases: []string{"pwd"},
-				Usage:"用户密码, httpServer base认证",
-				Destination:&password,
-				Value:"123",
+				Name:        "password",
+				Aliases:     []string{"pwd"},
+				Usage:       "用户密码, httpServer base认证",
+				Destination: &password,
+				Value:       "123",
 			},
 			&cli.StringFlag{
-				Name:"directory",
-				Aliases: []string{"dir","d"},
-				Usage:"文件的根目录",
-				Destination:&dir,
-				Value:"~/httpserverdir/",
+				Name:        "directory",
+				Aliases:     []string{"dir", "d"},
+				Usage:       "文件的根目录",
+				Destination: &dir,
+				Value:       "~/httpserverdir/",
 			},
 		},
 		Action: func(context *cli.Context) error {
-			httpServer.Start(port,username,password,dir)
-			return nil
+			/*http.ListenAndServe(port, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Printf("url:%s",r.RequestURI)
+			}))*/
+			err := httpServer.Start(port, username, password, dir)
+			return err
 		},
 	}
 	app.Run(os.Args)
