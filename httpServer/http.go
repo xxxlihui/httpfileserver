@@ -56,9 +56,9 @@ func Start(port, username, password, dir string) error {
 		case http.MethodDelete:
 			delete(context)
 		}
-		if !context.IsAborted() {
-			context.AbortWithStatus(http.StatusOK)
-		}
+		//if !context.IsAborted() {
+		//context.AbortWithStatus(http.StatusOK)
+		//}
 
 	})
 	/*app.Use(author, fileSecurity)
@@ -305,7 +305,7 @@ func post(c *gin.Context) {
 			return
 		}
 	}
-	c.Redirect(http.StatusPermanentRedirect, c.Request.RequestURI)
+	c.Redirect(http.StatusMovedPermanently, c.Request.RequestURI)
 }
 
 func DecodeGBK(s string) (string, error) {
