@@ -1,14 +1,19 @@
 package httpServer
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 )
 
@@ -45,7 +50,7 @@ func Start(port, username, password, dir string) error {
 		case http.MethodGet:
 			get(context)
 		case http.MethodPost:
-			fallthrough
+			post(context)
 		case http.MethodPut:
 			put(context)
 		case http.MethodDelete:
@@ -114,12 +119,22 @@ func get(c *gin.Context) {
 		s := fmt.Sprintf(`<html>
 <head><title>Index of /</title></head>
 <body>
-<h1>Index of %s</h1><hr><pre><a href="../">../</a><br/>`, c.Request.RequestURI)
+<h1>Index of %s</h1><hr><pre><form style="display:flex" id="upload-form" action="./" method="post" enctype="multipart/form-data" >
+<a style="margin-left:20px;margin-right:50px;" href="../">../</a>
+<label style="margin-left:20px;margin-right:20px;display:flex;" ><input type="checkbox" value="true" name="zip"/>自动解压zip</label>
+<input type="file" id="upload" name="file" />
+<input type="submit" value="上传" />
+
+</form><br/>`, rquri)
 		if c.Request.RequestURI == "/" {
 			s = `<html>
 <head><title>Index of /</title></head>
 <body>
-<h1>Index of /</h1><hr><pre>`
+<h1>Index of /</h1><hr><pre><form style="display:flex" id="upload-form" action="./" method="post" enctype="multipart/form-data" >
+<label style="margin-left:20px;margin-right:20px;display:flex;"><input value="true"  type="checkbox" name="zip"/>自动解压zip</label>
+　　　<input type="file" id="upload" name="file" />
+　　　<input type="submit" value="上传" />
+</form>`
 
 		}
 		fs, err := ioutil.ReadDir(ph)
@@ -139,7 +154,15 @@ func get(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html;charset=utf-8", []byte(s))
 	} else {
 		//返回内容
-		c.File(ph)
+		f, err := os.Open(ph)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
+			return
+		}
+		defer f.Close()
+		fi, _ := f.Stat()
+		http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)
+		//c.File(ph)
 	}
 
 }
@@ -163,10 +186,17 @@ func put(c *gin.Context) {
 		rquri = c.Request.RequestURI
 	}
 	ph := path.Join(localdir, rquri)
+	f, err := c.FormFile("file")
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
 		return
 	}
+	fs, err := f.Open()
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "读取上传文件失败"})
+		return
+	}
+	defer fs.Close()
 	ff, err := os.OpenFile(ph, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		fmt.Printf("创建文件错误:%s", err.Error())
@@ -185,13 +215,107 @@ func put(c *gin.Context) {
 	} else {
 		defer ff.Close()
 	}
-	if _, err = io.Copy(ff, c.Request.Body); err != nil {
+	if _, err = io.Copy(ff, fs); err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, &ErrorMessage{Message: "服务器保存文件失败"})
 		return
 	}
 }
 func post(c *gin.Context) {
-	put(c)
+	f, err := c.FormFile("file")
+	if err != nil {
+		c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`请选择文件<br/>`))
+		return
+	}
+
+	z := c.PostForm("zip")
+	if z == "true" {
+		/*ef, err := ioutil.TempFile("", f.Filename)
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+		defer os.Remove(ef.Name())*/
+		fs, err := f.Open()
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+		defer fs.Close()
+		/*_, err = io.Copy(ef, fs)
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}*/
+		//解压文件
+		rd, err := zip.NewReader(fs, f.Size)
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+		for _, e := range rd.File {
+			name := e.Name
+			if e.FileHeader.NonUTF8 {
+				name, err = DecodeGBK(name)
+				if err != nil {
+					c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`解压文件失败，未知编码`))
+					return
+				}
+			}
+			if e.FileInfo().IsDir() {
+				os.MkdirAll(path.Join(localdir, c.Request.RequestURI, name), os.ModePerm)
+			} else {
+				ff, err := os.OpenFile(path.Join(localdir, c.Request.RequestURI, name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.ModePerm)
+				if err != nil {
+					c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+					return
+				}
+				r, err := e.Open()
+				if err != nil {
+					c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+					ff.Close()
+					return
+				}
+				_, err = io.Copy(ff, r)
+				if err != nil {
+					c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+					r.Close()
+					ff.Close()
+					return
+				}
+				ff.Close()
+				r.Close()
+			}
+		}
+	} else {
+		fn := filepath.Join(localdir, c.Request.RequestURI, f.Filename)
+		ff, err := os.OpenFile(fn, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.ModePerm)
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+		fs, err := f.Open()
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+		defer fs.Close()
+		_, err = io.Copy(ff, fs)
+		if err != nil {
+			c.Data(http.StatusInternalServerError, "text/html;charset=utf-8", []byte(`保存文件失败`))
+			return
+		}
+	}
+	c.Redirect(http.StatusPermanentRedirect, c.Request.RequestURI)
+}
+
+func DecodeGBK(s string) (string, error) {
+	I := bytes.NewReader([]byte(s))
+	O := transform.NewReader(I, simplifiedchinese.GBK.NewDecoder())
+	d, e := ioutil.ReadAll(O)
+	if e != nil {
+		return "", e
+	}
+	return string(d), nil
 }
 
 type ErrorMessage struct {
