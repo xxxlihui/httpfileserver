@@ -56,6 +56,9 @@ func Start(port, username, password, dir string) error {
 		case http.MethodDelete:
 			delete(context)
 		}
+		if !context.Writer.Written() {
+			context.Writer.Write([]byte{0})
+		}
 		//if !context.IsAborted() {
 		//context.AbortWithStatus(http.StatusOK)
 		//}
